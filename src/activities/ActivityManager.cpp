@@ -10,6 +10,7 @@
 #include "browser/OpdsBookBrowserActivity.h"
 #include "home/CrashActivity.h"
 #include "home/FileBrowserActivity.h"
+#include "extras/CloudSyncActivity.h"
 #include "extras/SudokuActivity.h"
 #include "extras/TodoActivity.h"
 #include "home/HomeActivity.h"
@@ -235,6 +236,8 @@ void ActivityManager::goToCrashReport() { replaceActivity(std::make_unique<Crash
 void ActivityManager::goToTodo() { replaceActivity(std::make_unique<TodoActivity>(renderer, mappedInput)); }
 
 void ActivityManager::goToSudoku() { replaceActivity(std::make_unique<SudokuActivity>(renderer, mappedInput)); }
+
+void ActivityManager::goToCloudSync() { replaceActivity(std::make_unique<CloudSyncActivity>(renderer, mappedInput)); }
 
 void ActivityManager::pushActivity(std::unique_ptr<Activity>&& activity) {
   if (pendingActivity) {
