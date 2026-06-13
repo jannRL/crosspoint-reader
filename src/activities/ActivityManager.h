@@ -16,7 +16,7 @@
 class Activity;    // forward declaration
 class RenderLock;  // forward declaration
 
-enum class HomeMenuItem { NONE, FILE_BROWSER, RECENTS, OPDS_BROWSER, FILE_TRANSFER, SETTINGS_MENU, TODO, SUDOKU };
+enum class HomeMenuItem { NONE, FILE_BROWSER, RECENTS, OPDS_BROWSER, FILE_TRANSFER, SETTINGS_MENU, TODO, SUDOKU, CLOUD_SYNC };
 
 /**
  * ActivityManager
@@ -93,6 +93,7 @@ class ActivityManager {
   void goHome(HomeMenuItem initialMenuItem = HomeMenuItem::NONE);
   void goToTodo();
   void goToSudoku();
+  void goToCloudSync();
 
   // This will move current activity to stack instead of deleting it
   void pushActivity(std::unique_ptr<Activity>&& activity);

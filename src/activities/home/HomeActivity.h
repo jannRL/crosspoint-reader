@@ -46,6 +46,8 @@ class HomeActivity final : public Activity {
     if (item == HomeMenuItem::TODO) return i;
     ++i;
     if (item == HomeMenuItem::SUDOKU) return i;
+    ++i;
+    if (item == HomeMenuItem::CLOUD_SYNC) return i;
     return 0;
   }
 
@@ -58,7 +60,8 @@ class HomeActivity final : public Activity {
     if (idx == i++) return HomeMenuItem::FILE_TRANSFER;
     if (idx == i++) return HomeMenuItem::SETTINGS_MENU;
     if (idx == i++) return HomeMenuItem::TODO;
-    if (idx == i) return HomeMenuItem::SUDOKU;
+    if (idx == i++) return HomeMenuItem::SUDOKU;
+    if (idx == i) return HomeMenuItem::CLOUD_SYNC;
     return HomeMenuItem::NONE;
   }
   void onSelectBook(const std::string& path);

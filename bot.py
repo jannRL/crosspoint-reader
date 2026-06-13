@@ -499,6 +499,53 @@ def make_bot():
     return bot
 
 
+# ─── REST API (for X4 to pull books + todo) ───────────────────────────────────
+
+try:
+    from flask import Flask, jsonify, send_from_directory, abort
+    HAS_FLASK = True
+except ImportError:
+    HAS_FLASK = False
+
+def make_api():
+    app = Flask(__name__)
+
+    @app.route("/api/todo")
+    def api_todo():
+        try:
+            with open(TODO_PATH, "r") as f:
+                return jsonify(json.load(f))
+        except FileNotFoundError:
+            return jsonify({"items": []})
+
+    @app.route("/api/books")
+    def api_books():
+        try:
+            files = [f for f in os.listdir(BOOKS_DIR) if f.lower().endswith((".epub", ".txt"))]
+        except FileNotFoundError:
+            files = []
+        return jsonify(files)
+
+    @app.route("/api/books/<path:filename>")
+    def api_book_file(filename):
+        safe = os.path.basename(filename)
+        path = os.path.join(BOOKS_DIR, safe)
+        if not os.path.isfile(path):
+            abort(404)
+        return send_from_directory(os.path.abspath(BOOKS_DIR), safe)
+
+    return app
+
+
+def run_api():
+    if not HAS_FLASK:
+        log.warning("Flask not installed — REST API disabled")
+        return
+    port = int(os.environ.get("PORT", 8080))
+    log.info("Starting REST API on port %d", port)
+    make_api().run(host="0.0.0.0", port=port, use_reloader=False)
+
+
 # ─── Main ─────────────────────────────────────────────────────────────────────
 
 def main():
@@ -511,6 +558,9 @@ def main():
     if not HAS_TELEBOT or not HAS_REQUESTS:
         log.error("Missing dependencies. Run: pip install pyTelegramBotAPI requests")
         return
+
+    api_thread = threading.Thread(target=run_api, daemon=True)
+    api_thread.start()
 
     log.info("Starting Xteink bot...")
     log.info("Books dir: %s", os.path.abspath(BOOKS_DIR))

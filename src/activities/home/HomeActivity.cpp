@@ -21,7 +21,7 @@
 #include "fontIds.h"
 
 int HomeActivity::getMenuItemCount() const {
-  int count = 6;  // File Browser, Recents, File transfer, Settings, Todo, Sudoku
+  int count = 7;  // File Browser, Recents, File transfer, Settings, Todo, Sudoku, Cloud Sync
   if (!recentBooks.empty()) {
     count += recentBooks.size();
   }
@@ -206,6 +206,9 @@ void HomeActivity::loop() {
         case HomeMenuItem::SUDOKU:
           activityManager.goToSudoku();
           break;
+        case HomeMenuItem::CLOUD_SYNC:
+          activityManager.goToCloudSync();
+          break;
         default:
           break;
       }
@@ -238,7 +241,8 @@ void HomeActivity::render(RenderLock&&) {
 
   // Build menu items dynamically
   std::vector<const char*> menuItems = {tr(STR_BROWSE_FILES), tr(STR_MENU_RECENT_BOOKS), tr(STR_FILE_TRANSFER),
-                                        tr(STR_SETTINGS_TITLE), tr(STR_TODO_LIST), tr(STR_SUDOKU)};
+                                        tr(STR_SETTINGS_TITLE), tr(STR_TODO_LIST), tr(STR_SUDOKU),
+                                        tr(STR_CLOUD_SYNC)};
   std::vector<UIIcon> menuIcons = {Folder, Recent, Transfer, Settings, Bookmark, Book};
 
   if (hasOpdsServers) {
