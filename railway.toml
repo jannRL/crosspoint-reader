@@ -1,6 +1,6 @@
 [build]
-builder = "railpack"
-installCommand = "pip install -r bot-requirements.txt"
+builder = "dockerfile"
+dockerfilePath = "Dockerfile"
 
 [deploy]
 startCommand = "python bot.py"
