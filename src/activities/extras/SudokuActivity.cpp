@@ -352,9 +352,16 @@ void SudokuActivity::loop() {
     }
 
     case State::PLAY: {
+      // Long press Confirm = undo
       if (!longPressFired && mappedInput.isPressed(MappedInputManager::Button::Confirm) &&
           mappedInput.getHeldTime() >= LONG_PRESS_MS) {
         longPressFired = true;
+        undoMove();
+        requestUpdate();
+        return;
+      }
+      // Short press Confirm = open number picker
+      if (!longPressFired && mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
         selectedNumber = 1;
         state = State::SELECT_NUMBER;
         requestUpdate();
@@ -370,28 +377,21 @@ void SudokuActivity::loop() {
         return;
       }
 
-      // Undo: Up + long press (hold Up)
-      if (mappedInput.isPressed(MappedInputManager::Button::Up) && mappedInput.getHeldTime() >= LONG_PRESS_MS) {
-        undoMove();
-        requestUpdate();
-        return;
-      }
-
-      // Navigate cursor
-      if (mappedInput.wasReleased(MappedInputManager::Button::Down) ||
-          mappedInput.wasReleased(MappedInputManager::Button::Right)) {
-        int pos = cursorRow * GRID + cursorCol;
-        pos = (pos + 1) % (GRID * GRID);
-        cursorRow = pos / GRID;
-        cursorCol = pos % GRID;
+      // 2D navigation: side buttons = rows, front buttons = columns
+      if (mappedInput.wasReleased(MappedInputManager::Button::Down)) {
+        cursorRow = (cursorRow + 1) % GRID;
         requestUpdate();
       }
-      if (mappedInput.wasReleased(MappedInputManager::Button::Up) ||
-          mappedInput.wasReleased(MappedInputManager::Button::Left)) {
-        int pos = cursorRow * GRID + cursorCol;
-        pos = (pos + GRID * GRID - 1) % (GRID * GRID);
-        cursorRow = pos / GRID;
-        cursorCol = pos % GRID;
+      if (mappedInput.wasReleased(MappedInputManager::Button::Up)) {
+        cursorRow = (cursorRow + GRID - 1) % GRID;
+        requestUpdate();
+      }
+      if (mappedInput.wasReleased(MappedInputManager::Button::Right)) {
+        cursorCol = (cursorCol + 1) % GRID;
+        requestUpdate();
+      }
+      if (mappedInput.wasReleased(MappedInputManager::Button::Left)) {
+        cursorCol = (cursorCol + GRID - 1) % GRID;
         requestUpdate();
       }
 
@@ -406,10 +406,8 @@ void SudokuActivity::loop() {
     }
 
     case State::SELECT_NUMBER: {
-      if (!longPressFired && mappedInput.isPressed(MappedInputManager::Button::Confirm) &&
-          mappedInput.getHeldTime() >= LONG_PRESS_MS) {
-        longPressFired = true;
-        // Long press confirm = place number
+      // Short press Confirm = place number
+      if (!longPressFired && mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
         placeNumber(cursorRow, cursorCol, selectedNumber);
         state = State::PLAY;
         if (isSolved()) {
@@ -428,18 +426,16 @@ void SudokuActivity::loop() {
         return;
       }
 
-      // Short press Down/Right = cycle number 1→2→...→9→0(clear)→1
+      // Down/Right = next number, Up/Left = previous number
       if (mappedInput.wasReleased(MappedInputManager::Button::Down) ||
           mappedInput.wasReleased(MappedInputManager::Button::Right)) {
-        selectedNumber = (selectedNumber % 10) + 1;
-        if (selectedNumber > 9) selectedNumber = 0;
-        // After 0, wrap to 1 (only one clear option)
+        selectedNumber = (selectedNumber + 1) % 10;
+        if (selectedNumber == 0) selectedNumber = 0;
         requestUpdate();
       }
       if (mappedInput.wasReleased(MappedInputManager::Button::Up) ||
           mappedInput.wasReleased(MappedInputManager::Button::Left)) {
-        selectedNumber = selectedNumber - 1;
-        if (selectedNumber < 0) selectedNumber = 9;
+        selectedNumber = (selectedNumber + 9) % 10;
         requestUpdate();
       }
       break;
@@ -459,11 +455,43 @@ void SudokuActivity::loop() {
 void SudokuActivity::renderGrid(int gridX, int gridY, int cellW, int cellH, int thinLine, int thickLine) {
   const int gridW = GRID * cellW;
   const int gridH = GRID * cellH;
+  const bool inPlay = (state == State::PLAY || state == State::SELECT_NUMBER);
+  const uint8_t cursorNum = inPlay ? board[cursorRow][cursorCol] : 0;
+  const int cursorBox = (cursorRow / 3) * 3 + (cursorCol / 3);
 
-  // Fill cursor cell
-  if (state == State::PLAY || state == State::SELECT_NUMBER) {
-    renderer.fillRect(gridX + cursorCol * cellW + thinLine, gridY + cursorRow * cellH + thinLine,
-                      cellW - thinLine, cellH - thinLine, false);  // invert (gray-ish)
+  // Row/column/box highlights and same-number dot indicators
+  if (inPlay) {
+    for (int r = 0; r < GRID; ++r) {
+      for (int c = 0; c < GRID; ++c) {
+        if (r == cursorRow && c == cursorCol) continue;
+        int cx = gridX + c * cellW;
+        int cy = gridY + r * cellH;
+        bool inRowCol = (r == cursorRow || c == cursorCol);
+        bool inBox = ((r / 3) * 3 + (c / 3)) == cursorBox;
+        if (inRowCol || inBox) {
+          // Thin inner border to indicate shared row/col/box
+          renderer.drawLine(cx + 2, cy + 2, cx + cellW - 2, cy + 2, 1, true);
+          renderer.drawLine(cx + 2, cy + cellH - 2, cx + cellW - 2, cy + cellH - 2, 1, true);
+          renderer.drawLine(cx + 2, cy + 2, cx + 2, cy + cellH - 2, 1, true);
+          renderer.drawLine(cx + cellW - 2, cy + 2, cx + cellW - 2, cy + cellH - 2, 1, true);
+        }
+        if (cursorNum != 0 && board[r][c] == cursorNum) {
+          // Small filled dot at bottom-center for cells sharing the same number
+          renderer.fillRect(cx + cellW / 2 - 2, cy + cellH - 5, 4, 3, true);
+        }
+      }
+    }
+  }
+
+  // Cursor: solid black fill + 3px outer border
+  if (inPlay) {
+    int cx = gridX + cursorCol * cellW;
+    int cy = gridY + cursorRow * cellH;
+    renderer.fillRect(cx + thinLine, cy + thinLine, cellW - thinLine, cellH - thinLine, true);
+    renderer.fillRect(cx - 2, cy - 2, cellW + 5, 3, true);
+    renderer.fillRect(cx - 2, cy + cellH, cellW + 5, 3, true);
+    renderer.fillRect(cx - 2, cy - 2, 3, cellH + 5, true);
+    renderer.fillRect(cx + cellW, cy - 2, 3, cellH + 5, true);
   }
 
   // Draw cell numbers
@@ -477,11 +505,10 @@ void SudokuActivity::renderGrid(int gridX, int gridY, int cellW, int cellH, int 
       int tx = gridX + c * cellW + (cellW - numW) / 2;
       int ty = gridY + r * cellH + (cellH - lineH) / 2;
       bool isBlack = true;
-      if (r == cursorRow && c == cursorCol && (state == State::PLAY || state == State::SELECT_NUMBER)) {
+      if (r == cursorRow && c == cursorCol && inPlay) {
         isBlack = false;  // white on dark cursor
       }
       if (error[r][c]) {
-        // Draw error marker — small dot below number
         renderer.fillRect(tx + numW / 2 - 1, ty + lineH + 1, 3, 3, isBlack);
       }
       EpdFontFamily::Style style = given[r][c] ? EpdFontFamily::BOLD : EpdFontFamily::REGULAR;
@@ -489,11 +516,15 @@ void SudokuActivity::renderGrid(int gridX, int gridY, int cellW, int cellH, int 
     }
   }
 
-  // Draw thin cell lines
+  // Draw grid lines: thin for cells, filled 3px rect for 3x3 box boundaries
   for (int i = 0; i <= GRID; ++i) {
-    int lw = ((i % 3) == 0) ? thickLine : thinLine;
-    renderer.drawLine(gridX, gridY + i * cellH, gridX + gridW, gridY + i * cellH, lw, true);
-    renderer.drawLine(gridX + i * cellW, gridY, gridX + i * cellW, gridY + gridH, lw, true);
+    if ((i % 3) == 0) {
+      renderer.fillRect(gridX - 1, gridY + i * cellH - 1, gridW + 3, 3, true);
+      renderer.fillRect(gridX + i * cellW - 1, gridY - 1, 3, gridH + 3, true);
+    } else {
+      renderer.drawLine(gridX, gridY + i * cellH, gridX + gridW, gridY + i * cellH, thinLine, true);
+      renderer.drawLine(gridX + i * cellW, gridY, gridX + i * cellW, gridY + gridH, thinLine, true);
+    }
   }
 
   // Selected number indicator (number-select mode)
@@ -579,7 +610,7 @@ void SudokuActivity::renderPlay() {
   renderGrid(gridX, gridY, cellSize, cellSize, 1, 2);
 
   const char* confirmLabel = (state == State::SELECT_NUMBER) ? tr(STR_SUDOKU_PLACE) : tr(STR_SUDOKU_PICK);
-  const auto labels = mappedInput.mapLabels(tr(STR_BACK), confirmLabel, tr(STR_DIR_UP), tr(STR_DIR_DOWN));
+  const auto labels = mappedInput.mapLabels(tr(STR_BACK), confirmLabel, tr(STR_DIR_LEFT), tr(STR_DIR_RIGHT));
   GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
 }
 
