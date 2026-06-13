@@ -1,5 +1,6 @@
 [build]
 builder = "railpack"
+installCommand = "pip install -r bot-requirements.txt"
 
 [deploy]
 startCommand = "python bot.py"
