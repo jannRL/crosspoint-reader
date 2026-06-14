@@ -4,3 +4,6 @@ builder = "railpack"
 [deploy]
 startCommand = "python bot.py"
 restartPolicyType = "always"
+
+[variables]
+RAILPACK_INSTALL_CMD = "pip install -r bot-requirements.txt"
