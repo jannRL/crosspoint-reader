@@ -243,7 +243,7 @@ void HomeActivity::render(RenderLock&&) {
   std::vector<const char*> menuItems = {tr(STR_BROWSE_FILES), tr(STR_MENU_RECENT_BOOKS), tr(STR_FILE_TRANSFER),
                                         tr(STR_SETTINGS_TITLE), tr(STR_TODO_LIST), tr(STR_SUDOKU),
                                         tr(STR_CLOUD_SYNC)};
-  std::vector<UIIcon> menuIcons = {Folder, Recent, Transfer, Settings, Bookmark, Book};
+  std::vector<UIIcon> menuIcons = {Folder, Recent, Transfer, Settings, Bookmark, Book, Wifi};
 
   if (hasOpdsServers) {
     menuItems.insert(menuItems.begin() + 2, tr(STR_OPDS_BROWSER));

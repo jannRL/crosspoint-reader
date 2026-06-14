@@ -429,8 +429,7 @@ void SudokuActivity::loop() {
       // Down/Right = next number, Up/Left = previous number
       if (mappedInput.wasReleased(MappedInputManager::Button::Down) ||
           mappedInput.wasReleased(MappedInputManager::Button::Right)) {
-        selectedNumber = (selectedNumber + 1) % 10;
-        if (selectedNumber == 0) selectedNumber = 0;
+        selectedNumber = (selectedNumber % 9) + 1;  // cycles 1-9, skips 0
         requestUpdate();
       }
       if (mappedInput.wasReleased(MappedInputManager::Button::Up) ||
@@ -483,15 +482,17 @@ void SudokuActivity::renderGrid(int gridX, int gridY, int cellW, int cellH, int 
     }
   }
 
-  // Cursor: solid black fill + 3px outer border
+  // Cursor: solid black fill + 3px outer border (clamped to avoid negative coords)
   if (inPlay) {
     int cx = gridX + cursorCol * cellW;
     int cy = gridY + cursorRow * cellH;
     renderer.fillRect(cx + thinLine, cy + thinLine, cellW - thinLine, cellH - thinLine, true);
-    renderer.fillRect(cx - 2, cy - 2, cellW + 5, 3, true);
-    renderer.fillRect(cx - 2, cy + cellH, cellW + 5, 3, true);
-    renderer.fillRect(cx - 2, cy - 2, 3, cellH + 5, true);
-    renderer.fillRect(cx + cellW, cy - 2, 3, cellH + 5, true);
+    const int bx = std::max(0, cx - 2);
+    const int by = std::max(0, cy - 2);
+    renderer.fillRect(bx, by, cellW + 5, 3, true);
+    renderer.fillRect(bx, cy + cellH, cellW + 5, 3, true);
+    renderer.fillRect(bx, by, 3, cellH + 5, true);
+    renderer.fillRect(cx + cellW, by, 3, cellH + 5, true);
   }
 
   // Draw cell numbers
