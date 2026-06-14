@@ -685,29 +685,28 @@ def run_api():
 
 # ─── Main ─────────────────────────────────────────────────────────────────────
 
-def main():
-    ensure_dirs()
-
+def run_bot():
+    """Run the Telegram bot. Failures here must NOT take down the REST API,
+    which the e-reader depends on for syncing."""
     if not BOT_TOKEN:
-        log.error("No TELEGRAM_BOT_TOKEN set. Add it to your environment or .env file.")
+        log.error("No TELEGRAM_BOT_TOKEN set — Telegram bot disabled, REST API still running.")
         return
 
     if not HAS_TELEBOT or not HAS_REQUESTS:
-        log.error("Missing dependencies. Run: pip install pyTelegramBotAPI requests")
+        log.error("Missing telebot/requests — Telegram bot disabled, REST API still running.")
         return
 
-    api_thread = threading.Thread(target=run_api, daemon=True)
-    api_thread.start()
+    try:
+        bot = make_bot()
+    except Exception as e:
+        log.error("Failed to initialise Telegram bot: %s — REST API still running.", e)
+        return
 
-    log.info("Starting Xteink bot...")
-    log.info("Books dir: %s", os.path.abspath(BOOKS_DIR))
-    log.info("Data dir:  %s", os.path.abspath(DATA_DIR))
+    log.info("Telegram bot polling started.")
     if ALLOWED_CHAT_ID:
         log.info("Restricted to chat ID: %s", ALLOWED_CHAT_ID)
     else:
         log.info("No chat ID restriction — anyone can use the bot")
-
-    bot = make_bot()
 
     while True:
         try:
@@ -715,6 +714,21 @@ def main():
         except Exception as e:
             log.error("Polling error: %s — retrying in 5s", e)
             time.sleep(5)
+
+
+def main():
+    ensure_dirs()
+
+    log.info("Books dir: %s", os.path.abspath(BOOKS_DIR))
+    log.info("Data dir:  %s", os.path.abspath(DATA_DIR))
+
+    # The Telegram bot runs in a background thread; the REST API runs in the
+    # main thread as the primary web process. This keeps the API (which the
+    # device polls for sync) alive even if the bot token is missing or invalid.
+    bot_thread = threading.Thread(target=run_bot, daemon=True)
+    bot_thread.start()
+
+    run_api()  # blocks, serving on $PORT
 
 
 if __name__ == "__main__":
