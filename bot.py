@@ -3,16 +3,18 @@ Xteink Telegram Bot
 Adapted from Palpi (pala-pi) for standalone deployment on Railway/any VPS.
 
 Commands:
-  /start            — Welcome
-  /search <query>   — Search Project Gutenberg
-  /popular          — Top Gutenberg books
-  /download <id>    — Download Gutenberg book by ID
-  /todo             — Show your todo list
-  /add <text>       — Add a todo item
-  /done <number>    — Toggle item done/undone
-  /clear            — Remove all completed items
-  /list             — List all books in library
-  /help             — Command list
+  /start              — Welcome
+  /search <query>     — Search Gutenberg + Internet Archive
+  /popular            — Top Gutenberg books
+  /download <id>      — Download Gutenberg book by ID
+  /iasearch <query>   — Search Internet Archive for EPUBs
+  /iadownload <id>    — Download EPUB from Internet Archive
+  /todo               — Show your todo list
+  /add <text>         — Add a todo item
+  /done <number>      — Toggle item done/undone
+  /clear              — Remove all completed items
+  /list               — List all books in library
+  /help               — Command list
 
 Send any .epub or .txt file to add it to your library.
 Send any plain text to search Gutenberg.
@@ -134,7 +136,7 @@ def strip_gutenberg_boilerplate(text):
             break
     return "\n".join(lines[start:end])
 
-# ─── Gutenberg ────────────────────────────────────────────────────────────────
+# ─── Gutenberg ───────────────────────────────────────────────────────────────
 
 def search_gutenberg(query, page=1):
     if not HAS_REQUESTS:
@@ -205,6 +207,66 @@ def download_gutenberg_book(book_id, txt_url=None):
 
     return text, title
 
+# ─── Internet Archive ────────────────────────────────────────────────────────
+
+IA_SEARCH_API  = "https://archive.org/advancedsearch.php"
+IA_METADATA_API = "https://archive.org/metadata/{id}"
+IA_DOWNLOAD_URL = "https://archive.org/download/{id}/{file}"
+
+def search_archive(query):
+    if not HAS_REQUESTS:
+        return []
+    try:
+        resp = requests.get(IA_SEARCH_API, params={
+            "q": f'({query}) AND mediatype:texts AND format:"epub"',
+            "fl":  "identifier,title,creator",
+            "output": "json",
+            "rows": 8,
+            "sort[]": "downloads desc",
+        }, timeout=15)
+        resp.raise_for_status()
+        docs = resp.json().get("response", {}).get("docs", [])
+        results = []
+        for d in docs:
+            creator = d.get("creator", "Unknown")
+            if isinstance(creator, list):
+                creator = ", ".join(creator)
+            results.append({
+                "id":     d.get("identifier", ""),
+                "title":  d.get("title", "Unknown"),
+                "author": creator,
+            })
+        return results
+    except Exception as e:
+        log.error("Archive search error: %s", e)
+        return []
+
+def download_archive_book(identifier):
+    if not HAS_REQUESTS:
+        return None, "requests not installed"
+    try:
+        meta = requests.get(IA_METADATA_API.format(id=identifier), timeout=15).json()
+        title = meta.get("metadata", {}).get("title", identifier)
+        files = meta.get("files", [])
+        epub_file = next(
+            (f["name"] for f in files if f["name"].lower().endswith(".epub")), None
+        )
+        if not epub_file:
+            return None, "No EPUB file found for this item"
+    except Exception as e:
+        return None, f"Metadata error: {e}"
+
+    url = IA_DOWNLOAD_URL.format(id=identifier, file=epub_file)
+    try:
+        resp = requests.get(url, timeout=60, stream=True)
+        resp.raise_for_status()
+        content = resp.content
+    except Exception as e:
+        return None, f"Download failed: {e}"
+
+    return content, title, epub_file
+
+
 # ─── Todo List ────────────────────────────────────────────────────────────────
 
 TODO_PATH = os.path.join(DATA_DIR, "todo.json")
@@ -262,11 +324,15 @@ def make_bot():
             return
         bot.reply_to(msg,
             "*Xteink Bot*\n\n"
-            "*Books*\n"
-            "/search <query> — Search Gutenberg\n"
+            "*Gutenberg \\(public domain classics\\)*\n"
+            "/search <query> — Search\n"
             "/popular — Top downloads\n"
-            "/download <id> — Get book by ID\n"
-            "/list — Books in library\n\n"
+            "/download <id> — Get book by ID\n\n"
+            "*Internet Archive \\(millions of EPUBs\\)*\n"
+            "/iasearch <query> — Search\n"
+            "/iadownload <id> — Download EPUB by identifier\n\n"
+            "*Library*\n"
+            "/list — Books saved locally\n\n"
             "*Todo List*\n"
             "/todo — Show list\n"
             "/add <text> — Add item\n"
@@ -274,7 +340,7 @@ def make_bot():
             "/clear — Remove completed items\n\n"
             "*Other*\n"
             "/myid — Your chat ID\n\n"
-            "Send any text to search\\. Upload .epub or .txt to save directly\\."
+            "Send any text to search both sources\\. Upload .epub or .txt to save directly\\."
         )
 
     # ── /myid ─────────────────────────────────────────────────────────────────
@@ -345,6 +411,63 @@ def make_bot():
             bot.reply_to(msg, "Usage: /download <gutenberg_id>")
             return
         do_download(msg, book_id)
+
+    # ── /iasearch ─────────────────────────────────────────────────────────────
+    @bot.message_handler(commands=["iasearch"])
+    def cmd_iasearch(msg):
+        if not is_authorized(msg):
+            return
+        query = msg.text.replace("/iasearch", "").strip()
+        if not query:
+            bot.reply_to(msg, "Usage: /iasearch <title or author>")
+            return
+        bot.reply_to(msg, f"Searching Internet Archive for _{query}_...")
+        results = search_archive(query)
+        if not results:
+            bot.reply_to(msg, "No EPUB results found. Try a different search.")
+            return
+        lines = [f"*Internet Archive — top {len(results)} results:*\n"]
+        for r in results:
+            lines.append(
+                f"• *{r['title']}*\n"
+                f"  {r['author']}\n"
+                f"  /iadownload\\_{r['id']}"
+            )
+        bot.reply_to(msg, "\n".join(lines))
+
+    # ── /iadownload ───────────────────────────────────────────────────────────
+    @bot.message_handler(func=lambda m: m.text and m.text.startswith("/iadownload"))
+    def cmd_iadownload(msg):
+        if not is_authorized(msg):
+            return
+        identifier = msg.text.replace("/iadownload_", "").replace("/iadownload", "").strip()
+        if not identifier:
+            bot.reply_to(msg, "Usage: /iadownload <archive.org identifier>")
+            return
+        bot.reply_to(msg, f"Fetching `{identifier}` from Internet Archive...")
+        result = download_archive_book(identifier)
+        if result[0] is None:
+            bot.reply_to(msg, f"Failed: {result[1]}")
+            return
+        content, title, epub_filename = result
+        filename = sanitize_filename(title, ext=".epub")
+        dest = os.path.join(BOOKS_DIR, filename)
+        if os.path.exists(dest):
+            dest = os.path.join(BOOKS_DIR, sanitize_filename(identifier, ext=".epub"))
+        try:
+            with open(dest, "wb") as f:
+                f.write(content)
+        except Exception as e:
+            bot.reply_to(msg, f"Save failed: {e}")
+            return
+        size_kb = len(content) / 1024
+        bot.reply_to(msg,
+            f"*Saved!*\n\n"
+            f"Title: _{title}_\n"
+            f"File: `{os.path.basename(dest)}`\n"
+            f"Size: {size_kb:.1f} KB\n\n"
+            f"Sync to X4 via Cloud Sync\\."
+        )
 
     # ── /todo ─────────────────────────────────────────────────────────────────
     @bot.message_handler(commands=["todo"])
@@ -457,18 +580,32 @@ def make_bot():
     # ── Helpers ───────────────────────────────────────────────────────────────
     def do_search(msg, query):
         bot.reply_to(msg, f"Searching for _{query}_...")
-        results, total = search_gutenberg(query)
-        if not results:
+        gutenberg, total = search_gutenberg(query)
+        archive = search_archive(query)
+
+        if not gutenberg and not archive:
             bot.reply_to(msg, "No books found. Try a different search.")
             return
-        lines = [f"*Found {total} books. Showing top {len(results)}:*\n"]
-        for r in results:
-            lines.append(
-                f"• *{r['title']}*\n"
-                f"  {r['author']} ({r['downloads']:,} downloads)\n"
-                f"  /download\\_{r['id']}"
-            )
-        bot.reply_to(msg, "\n".join(lines))
+
+        if gutenberg:
+            lines = [f"*Gutenberg \\({total} matches\\):*\n"]
+            for r in gutenberg[:5]:
+                lines.append(
+                    f"• *{r['title']}*\n"
+                    f"  {r['author']}\n"
+                    f"  /download\\_{r['id']}"
+                )
+            bot.reply_to(msg, "\n".join(lines))
+
+        if archive:
+            lines = ["*Internet Archive \\(EPUBs\\):*\n"]
+            for r in archive[:5]:
+                lines.append(
+                    f"• *{r['title']}*\n"
+                    f"  {r['author']}\n"
+                    f"  /iadownload\\_{r['id']}"
+                )
+            bot.reply_to(msg, "\n".join(lines))
 
     def do_download(msg, book_id):
         bot.reply_to(msg, f"Downloading book \\#{book_id}...")
