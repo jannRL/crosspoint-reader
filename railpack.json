@@ -1,0 +1,4 @@
+{
+  "$schema": "https://schema.railpack.com",
+  "installCmd": "pip install -r bot-requirements.txt"
+}
